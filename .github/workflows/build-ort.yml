@@ -65,6 +65,8 @@ jobs:
           key: ccache-ort-${{ inputs.onnxruntime_version }}-${{ hashFiles('configs/ort/*', '.github/workflows/build-ort.yml') }}
           restore-keys: |
             ccache-ort-${{ inputs.onnxruntime_version }}-
+          # save even when the build fails: partial compile results speed up the next run
+          save-always: true
 
       - name: Set up vcpkg (pinned by ORT, shared across ABIs)
         run: |
@@ -79,6 +81,8 @@ jobs:
         with:
           path: ~/vcpkg-bincache
           key: vcpkg-ort-${{ inputs.onnxruntime_version }}-${{ env.VCPKG_TAG }}
+          # save even when the build fails: built packages speed up the next run
+          save-always: true
 
       - name: Clone ONNX Runtime source (shallow, tag pinned)
         run: |

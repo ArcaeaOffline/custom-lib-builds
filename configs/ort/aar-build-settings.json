@@ -18,6 +18,7 @@
         "--use_xnnpack",
         "--disable_ml_ops",
         "--use_cache",
+        "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF",
         "--skip_tests"
     ]
 }
