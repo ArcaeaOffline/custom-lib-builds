@@ -91,6 +91,16 @@ jobs:
         env:
           ORT_VERSION: ${{ inputs.onnxruntime_version }}
 
+      - name: Verify CMake version
+        run: |
+          cmake --version | head -1
+          # ORT 1.26 is only validated against CMake 3.x (official Docker pins 3.31.5);
+          # fail early if the runner image ships CMake 4.x
+          if cmake --version | head -1 | grep -qE 'cmake version [4-9]\.'; then
+            echo "::error::CMake 4.x is not validated for ORT 1.26. Pin CMake 3.31.x first."
+            exit 1
+          fi
+
       - name: Build AAR (build_aar_package.py, reduced ops)
         run: |
           # vcpkg requires the binary cache dir to already exist
