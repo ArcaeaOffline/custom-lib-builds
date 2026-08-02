@@ -54,6 +54,20 @@ jobs:
           # AGP 8.6 predates CMake 4.x; remove it so AGP falls back to CMake 3.31.x
           rm -rf "$ANDROID_HOME/cmake/4.1.2"
 
+      - name: Install and configure ccache
+        run: |
+          sudo apt-get install -y ccache
+          echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
+          ccache --max-size=5G
+
+      - name: Restore ccache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ inputs.opencv_version }}-${{ hashFiles('configs/*.py', '.github/workflows/build.yml') }}
+          restore-keys: |
+            ccache-${{ inputs.opencv_version }}-
+
       - name: Clone OpenCV source (shallow, tag pinned)
         run: |
           git clone --depth 1 --branch "$OPENCV_VERSION" https://github.com/opencv/opencv opencv
