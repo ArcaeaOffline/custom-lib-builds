@@ -101,13 +101,13 @@ jobs:
         with:
           name: opencv-${{ inputs.opencv_version }}
           path: |
-            build/build_static/outputs/*.aar
-            build/build_static/outputs/maven_repo
+            build/outputs/opencv_static_*.aar
+            build/outputs/maven_repo
 
       - name: Create GitHub Release
         if: ${{ inputs.release }}
         run: |
-          cd build/build_static/outputs
+          cd build/outputs
           python -m zipfile -c maven_repo.zip maven_repo
           # re-publish over an existing release of the same OpenCV version
           gh release delete "$OPENCV_VERSION" --yes --cleanup-tag 2>/dev/null || true
