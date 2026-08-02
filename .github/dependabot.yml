@@ -1,0 +1,9 @@
+# Keeps the GitHub Actions pinned by commit SHA up to date.
+# Security advisories for Actions are also surfaced through Dependabot alerts.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

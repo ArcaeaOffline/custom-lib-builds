@@ -1,0 +1,26 @@
+# OpenCV source archive and extracted source tree
+opencv-*.zip
+opencv-*.tar.gz
+opencv-*/
+
+# Python virtual environment
+.venv/
+__pycache__/
+*.pyc
+
+# Local build outputs (build_sdk.py workdir / build_static_aar.py outputs)
+build/
+build_static/
+outputs/
+o4a/
+
+# Gradle
+.gradle/
+
+# Editor / IDE / tooling caches
+.idea/
+.vscode/
+.cache/
+*.iml
+.DS_Store
+Thumbs.db

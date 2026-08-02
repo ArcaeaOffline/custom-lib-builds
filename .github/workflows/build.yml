@@ -1,0 +1,109 @@
+name: Build OpenCV Android AAR
+
+on:
+  workflow_dispatch:
+    inputs:
+      opencv_version:
+        description: 'OpenCV git tag to build (e.g. 5.0.0)'
+        required: false
+        default: '5.0.0'
+      release:
+        description: 'Create a GitHub Release (tag name = opencv_version)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write   # gh release create/upload
+
+env:
+  OPENCV_MODULES: core,flann,geometry,imgproc,imgcodecs,dnn,java
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Set up Android SDK components
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0 ndk;27.3.13750724'
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+
+      - name: Prepare environment
+        run: |
+          # build_sdk.py requires ANDROID_SDK / ANDROID_NDK env vars
+          echo "ANDROID_SDK=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/27.3.13750724" >> "$GITHUB_ENV"
+          # AGP 8.6 predates CMake 4.x; remove it so AGP falls back to CMake 3.31.x
+          rm -rf "$ANDROID_HOME/cmake/4.1.2"
+
+      - name: Clone OpenCV source (shallow, tag pinned)
+        run: |
+          git clone --depth 1 --branch "$OPENCV_VERSION" https://github.com/opencv/opencv opencv
+          # fetch the tag itself so git describe reports "5.0.0" instead of a bare commit
+          git -C opencv fetch --depth 1 origin tag "$OPENCV_VERSION"
+          echo "OpenCV commit: $(git -C opencv rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          OPENCV_VERSION: ${{ inputs.opencv_version }}
+
+      - name: Build native SDK (build_sdk.py)
+        run: |
+          python opencv/platforms/android/build_sdk.py build/o4a opencv \
+            --config "$GITHUB_WORKSPACE/configs/opencv.config.py" \
+            --modules_list "$OPENCV_MODULES" \
+            --sdk_path "$ANDROID_SDK" \
+            --ndk_path "$ANDROID_NDK" \
+            --no_samples_build
+
+      - name: Package AAR and Maven repo (build_static_aar.py)
+        run: |
+          cd build
+          python ../opencv/platforms/android/build_static_aar.py OpenCV-android-sdk \
+            --ndk_location "$ANDROID_NDK" \
+            --java_version 17
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: opencv-${{ inputs.opencv_version }}
+          path: |
+            build/build_static/outputs/*.aar
+            build/build_static/outputs/maven_repo
+
+      - name: Create GitHub Release
+        if: ${{ inputs.release }}
+        run: |
+          cd build/build_static/outputs
+          python -m zipfile -c maven_repo.zip maven_repo
+          # re-publish over an existing release of the same OpenCV version
+          gh release delete "$OPENCV_VERSION" --yes --cleanup-tag 2>/dev/null || true
+          cat > release_notes.md <<EOF
+          Custom OpenCV $OPENCV_VERSION Android AAR.
+
+          Modules: $OPENCV_MODULES
+          ABIs: armeabi-v7a, arm64-v8a, x86, x86_64
+          Static C++ libraries (c++_shared STL).
+          EOF
+          gh release create "$OPENCV_VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "OpenCV $OPENCV_VERSION custom build" \
+            --notes-file release_notes.md \
+            opencv_static_*.aar maven_repo.zip
+        env:
+          OPENCV_VERSION: ${{ inputs.opencv_version }}
