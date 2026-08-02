@@ -41,6 +41,10 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install Python deps for reduced-op build
+        # reduce_op_kernels.py needs the flatbuffers package (same version as the ORT Dockerfile)
+        run: pip install flatbuffers==2.0
+
       - name: Set up Android SDK components
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
         with:
