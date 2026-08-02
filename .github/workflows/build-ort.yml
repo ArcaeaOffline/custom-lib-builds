@@ -1,0 +1,126 @@
+# Custom ONNX Runtime Android AAR build pipeline
+# Reduced operator build: only the ops used by the ArcaeaOffline OCR model
+# (see configs/ort/ops.config) are compiled into libonnxruntime.so.
+name: Build ONNX Runtime Android AAR
+
+on:
+  workflow_dispatch:
+    inputs:
+      onnxruntime_version:
+        description: 'ONNX Runtime git tag to build (e.g. 1.26.0)'
+        required: false
+        default: '1.26.0'
+      release:
+        description: 'Create a GitHub Release (tag name = onnxruntime_version)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write   # gh release create/upload
+
+env:
+  VCPKG_TAG: 2025.08.27        # vcpkg checkout pinned by onnxruntime 1.26.0 build.py
+  NDK_VERSION: 28.0.13004108   # NDK used by the official ORT Android build image (v1.26.0 Dockerfile)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Set up Android SDK components
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0 ndk;${{ env.NDK_VERSION }}'
+
+      - name: Install and configure ccache
+        run: |
+          sudo apt-get install -y ccache
+          echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
+          ccache --max-size=5G
+
+      - name: Restore ccache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ccache
+          key: ccache-ort-${{ inputs.onnxruntime_version }}-${{ hashFiles('configs/ort/*', '.github/workflows/build-ort.yml') }}
+          restore-keys: |
+            ccache-ort-${{ inputs.onnxruntime_version }}-
+
+      - name: Set up vcpkg (pinned by ORT, shared across ABIs)
+        run: |
+          git clone --depth 1 --branch "$VCPKG_TAG" --single-branch https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
+          "$HOME/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_INSTALLATION_ROOT=$HOME/vcpkg" >> "$GITHUB_ENV"
+        env:
+          VCPKG_TAG: ${{ env.VCPKG_TAG }}
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/vcpkg-bincache
+          key: vcpkg-ort-${{ inputs.onnxruntime_version }}-${{ env.VCPKG_TAG }}
+
+      - name: Clone ONNX Runtime source (shallow, tag pinned)
+        run: |
+          git clone --depth 1 --branch "v$ORT_VERSION" --recurse-submodules --shallow-submodules https://github.com/microsoft/onnxruntime.git onnxruntime
+          echo "ORT commit: $(git -C onnxruntime rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          ORT_VERSION: ${{ inputs.onnxruntime_version }}
+
+      - name: Build AAR (build_aar_package.py, reduced ops)
+        run: |
+          export VCPKG_DEFAULT_BINARY_CACHE="$HOME/vcpkg-bincache"
+          python3 onnxruntime/tools/ci_build/github/android/build_aar_package.py \
+            --build_dir="$GITHUB_WORKSPACE/ort-build" \
+            --config=Release \
+            --android_sdk_path="$ANDROID_HOME" \
+            --android_ndk_path="$ANDROID_HOME/ndk/$NDK_VERSION" \
+            --include_ops_by_config="$GITHUB_WORKSPACE/configs/ort/ops.config" \
+            "$GITHUB_WORKSPACE/configs/ort/aar-build-settings.json"
+        env:
+          NDK_VERSION: ${{ env.NDK_VERSION }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: onnxruntime-${{ inputs.onnxruntime_version }}
+          path: |
+            ort-build/aar_out/Release/com
+
+      - name: Create GitHub Release
+        if: ${{ inputs.release }}
+        run: |
+          AAR=$(find ort-build/aar_out/Release -name "onnxruntime-android-*.aar" | head -1)
+          cd ort-build/aar_out/Release
+          python -m zipfile -c maven_repo.zip com
+          # re-publish over an existing release of the same ORT version
+          gh release delete "$ORT_VERSION" --yes --cleanup-tag 2>/dev/null || true
+          cat > release_notes.md <<EOF
+          Custom ONNX Runtime $ORT_VERSION Android AAR (reduced ops build).
+
+          Ops included: only those used by the ArcaeaOffline OCR model (see configs/ort/ops.config)
+          ABIs: armeabi-v7a, arm64-v8a, x86, x86_64
+          EPs: CPU (XNNPACK), NNAPI
+          minSdk 24 / targetSdk 34, LTO, shared lib
+          EOF
+          gh release create "$ORT_VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "ONNX Runtime $ORT_VERSION custom build" \
+            --notes-file release_notes.md \
+            "$AAR" maven_repo.zip
+        env:
+          ORT_VERSION: ${{ inputs.onnxruntime_version }}
