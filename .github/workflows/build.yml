@@ -65,7 +65,8 @@ jobs:
 
       - name: Build native SDK (build_sdk.py)
         run: |
-          python opencv/platforms/android/build_sdk.py build/o4a opencv \
+          # work_dir creates o4a/ (build) and OpenCV-android-sdk/ (result) under it
+          python opencv/platforms/android/build_sdk.py build opencv \
             --config "$GITHUB_WORKSPACE/configs/opencv.config.py" \
             --modules_list "$OPENCV_MODULES" \
             --sdk_path "$ANDROID_SDK" \
