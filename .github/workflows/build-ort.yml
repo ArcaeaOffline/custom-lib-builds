@@ -59,14 +59,13 @@ jobs:
           ccache --max-size=5G
 
       - name: Restore ccache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: cache-ccache-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ccache
           key: ccache-ort-${{ inputs.onnxruntime_version }}-${{ hashFiles('configs/ort/*', '.github/workflows/build-ort.yml') }}
           restore-keys: |
             ccache-ort-${{ inputs.onnxruntime_version }}-
-          # save even when the build fails: partial compile results speed up the next run
-          save-always: true
 
       - name: Set up vcpkg (pinned by ORT, shared across ABIs)
         run: |
@@ -77,12 +76,11 @@ jobs:
           VCPKG_TAG: ${{ env.VCPKG_TAG }}
 
       - name: Restore vcpkg binary cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: cache-vcpkg-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/vcpkg-bincache
           key: vcpkg-ort-${{ inputs.onnxruntime_version }}-${{ env.VCPKG_TAG }}
-          # save even when the build fails: built packages speed up the next run
-          save-always: true
 
       - name: Clone ONNX Runtime source (shallow, tag pinned)
         run: |
@@ -115,6 +113,20 @@ jobs:
             "$GITHUB_WORKSPACE/configs/ort/aar-build-settings.json"
         env:
           NDK_VERSION: ${{ env.NDK_VERSION }}
+
+      - name: Save ccache on failure
+        if: always() && steps.cache-ccache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ccache
+          key: ${{ steps.cache-ccache-restore.outputs.cache-primary-key }}
+
+      - name: Save vcpkg binary cache on failure
+        if: always() && steps.cache-vcpkg-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/vcpkg-bincache
+          key: ${{ steps.cache-vcpkg-restore.outputs.cache-primary-key }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
