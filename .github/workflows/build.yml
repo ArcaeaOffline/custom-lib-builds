@@ -1,3 +1,4 @@
+# Custom OpenCV Android AAR build pipeline
 name: Build OpenCV Android AAR
 
 on:
@@ -17,7 +18,7 @@ permissions:
   contents: write   # gh release create/upload
 
 env:
-  OPENCV_MODULES: core,flann,geometry,imgproc,imgcodecs,dnn,java
+  OPENCV_MODULES: core,flann,geometry,imgproc,imgcodecs,videoio,dnn,java
 
 jobs:
   build:
