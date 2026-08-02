@@ -36,10 +36,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.10
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.12'
+          # Match the official ORT build environment: Ubuntu 22.04 (self-hosted CI) / 20.04 (custom-build Docker).
+          # flatbuffers==2.0 (pinned by the ORT Dockerfile) cannot import on Python 3.12 ('imp' was removed).
+          python-version: '3.10'
 
       - name: Install Python deps for reduced-op build
         # reduce_op_kernels.py needs the flatbuffers package (same version as the ORT Dockerfile)
