@@ -76,7 +76,9 @@ jobs:
       - name: Package AAR and Maven repo (build_static_aar.py)
         run: |
           cd build
-          python ../opencv/platforms/android/build_static_aar.py OpenCV-android-sdk \
+          # absolute path required: build_static_aar.py writes OpenCV_DIR into
+          # CMakeLists.txt, which is resolved relative to the CMake build dir
+          python ../opencv/platforms/android/build_static_aar.py "$GITHUB_WORKSPACE/build/OpenCV-android-sdk" \
             --ndk_location "$ANDROID_NDK" \
             --java_version 17
 
