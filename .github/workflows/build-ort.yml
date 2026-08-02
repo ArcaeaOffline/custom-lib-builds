@@ -89,6 +89,8 @@ jobs:
 
       - name: Build AAR (build_aar_package.py, reduced ops)
         run: |
+          # vcpkg requires the binary cache dir to already exist
+          mkdir -p "$HOME/vcpkg-bincache"
           export VCPKG_DEFAULT_BINARY_CACHE="$HOME/vcpkg-bincache"
           python3 onnxruntime/tools/ci_build/github/android/build_aar_package.py \
             --build_dir="$GITHUB_WORKSPACE/ort-build" \
