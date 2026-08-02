@@ -25,6 +25,12 @@ modified** — customisation is done via:
 Republishing the same OpenCV version replaces the existing release (the tag is
 deleted and recreated at the current default-branch HEAD).
 
+The AAR is the **shared-library build** (`libopencv_java5.so` per ABI, full
+Java bindings in `classes.jar`) — drop-in compatible with the official
+`org.opencv:opencv` artifact consumed via `OpenCVLoader.initLocal()`.
+The generated `maven_repo` uses the same coordinates (`org.opencv:opencv`),
+so consumers only need to point a local maven repo at it.
+
 ## Version pinning
 
 - OpenCV source: shallow-cloned from the official repo at the given git tag;
