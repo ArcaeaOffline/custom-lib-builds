@@ -18,7 +18,9 @@ permissions:
   contents: write   # gh release create/upload
 
 env:
-  OPENCV_MODULES: core,flann,geometry,imgproc,imgcodecs,videoio,dnn,java
+  # OCR pipeline uses only image processing; dnn (and its deps geometry/flann) removed,
+  # inference runs on the custom ONNX Runtime AAR instead
+  OPENCV_MODULES: core,imgproc,imgcodecs,videoio,java
 
 jobs:
   build:
