@@ -1,45 +1,50 @@
-# OpenCV Custom Android Builds
+# Custom Android Builds
 
-Slimmed-down OpenCV 5.x Android AAR with Java bindings, built on GitHub Actions.
+Custom builds of OpenCV and ONNX Runtime for Android, produced by GitHub
+Actions. The upstream sources are never modified; everything is configured
+through `configs/` and the workflow files.
 
-## Modules
+## Artifacts
 
-`core, flann, geometry, imgproc, imgcodecs, dnn, java`
+| Artifact | Maven coordinates |
+|---|---|
+| OpenCV AAR (shared lib, full Java bindings) | `org.opencv:opencv:5.0.0` |
+| ONNX Runtime AAR (reduced ops, see `configs/ort/ops.config`) | `com.microsoft.onnxruntime:onnxruntime-android:1.26.0` |
 
-Everything else (features, objdetect, photo, video, videoio, highgui, stitching,
-calib, stereo, ptcloud, ts) is excluded. The OpenCV source tree is **never
-modified** — customisation is done via:
-
-- `configs/opencv.config.py` — ABI list, consumed by `build_sdk.py --config`
-- `.github/workflows/build.yml` — module list, NDK pin, environment handling
+Both keep the official coordinates, so consumers override the official
+artifacts through a local maven repo without app code changes.
 
 ## How to run
 
-1. **Build (artifact only)**: GitHub → Actions → *Build OpenCV Android AAR* →
-   *Run workflow* → leave `opencv_version` as-is, keep `release` unchecked.
-   Artifacts (`*.aar` + maven repo) expire after 90 days.
-2. **Publish (GitHub Release)**: same as above but check `release`. A release
-   tagged `5.0.0` (same as the OpenCV version) is created/overwritten with the
-   AAR and the maven repository attached.
+1. **Build (artifact only)**: Actions tab, *Build OpenCV Android AAR* or
+   *Build ONNX Runtime Android AAR*, Run workflow, keep `release` unchecked.
+   Artifacts expire after 90 days.
+2. **Publish (GitHub Release)**: same, but check `release`. Each publish
+   creates two releases:
+   - a stable tag (`opencv-5.0.0`, `onnxruntime-1.26.0`), overwritten on every
+     publish. This is the download contract for consumers.
+   - a dated history tag (`<stable>-YYYYMMDD`), one per build, for
+     traceability.
+   Release notes carry the build commit and artifact checksums.
 
-Republishing the same OpenCV version replaces the existing release (the tag is
-deleted and recreated at the current default-branch HEAD).
+## Configuration
 
-The AAR is the **shared-library build** (`libopencv_java5.so` per ABI, full
-Java bindings in `classes.jar`) — drop-in compatible with the official
-`org.opencv:opencv` artifact consumed via `OpenCVLoader.initLocal()`.
-The generated `maven_repo` uses the same coordinates (`org.opencv:opencv`),
-so consumers only need to point a local maven repo at it.
+Details like the module list, NDK/CMake pins and expected build times change
+often. The workflows and recent run logs are the source of truth:
+
+- `.github/workflows/build-opencv.yml`: OpenCV modules and environment pins
+- `.github/workflows/build-ort.yml`: ORT build parameters and environment pins
+- `configs/ort/ops.config`: operator whitelist for the reduced ORT build
 
 ## Version pinning
 
-- OpenCV source: shallow-cloned from the official repo at the given git tag;
-  the resolved commit SHA is recorded in the workflow run summary.
-- GitHub Actions: pinned by full commit SHA (with `# vX.Y.Z` comments),
-  updated automatically via Dependabot.
-- Android NDK: pinned to `27.3.13750724`; AGP 8.6 builds with SDK CMake 3.31.x
-  (the bundled CMake 4.x is removed from the runner's SDK before building).
+- Upstream sources are shallow-cloned at pinned git tags; the resolved commit
+  SHA is recorded in the workflow run summary.
+- GitHub Actions are pinned by full commit SHA (with `# vX.Y.Z` comments) and
+  updated by Dependabot.
+- NDK and CMake versions are pinned per workflow; see the workflow file.
 
-## Expected build time
+## License
 
-~1.5–2.5 h on a standard 4-core runner (4 ABIs, TBB/IPP/KleidiCV enabled).
+This repository is 0BSD. The produced AARs inherit the upstream licenses:
+OpenCV is Apache-2.0, ONNX Runtime is MIT.

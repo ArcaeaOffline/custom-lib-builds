@@ -8,7 +8,10 @@ opencv-*/
 __pycache__/
 *.pyc
 
-# Local build outputs (build_sdk.py workdir / build_static_aar.py outputs)
+# Local build outputs (build_sdk.py workdir / build_static_aar.py outputs / maven repo / AARs)
+maven_repo/
+opencv_java*.aar
+onnxruntime-*/
 build/
 build_static/
 outputs/
