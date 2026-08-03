@@ -30,20 +30,21 @@ jobs:
       - name: Checkout this repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up JDK 17
+      - name: Set up JDK
+        # JDK 17 (temurin) for the Android Gradle plugin
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Python 3.10
+      - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          # Match the official ORT build environment: Ubuntu 22.04 (self-hosted CI) / 20.04 (custom-build Docker).
-          # flatbuffers==2.0 (pinned by the ORT Dockerfile) cannot import on Python 3.12 ('imp' was removed).
+          # Python 3.10 to match the official ORT build environment.
+          # flatbuffers==2.0 (pinned by the ORT Dockerfile) cannot import on Python 3.12, which removed the 'imp' module.
           python-version: '3.10'
 
-      - name: Install Python deps for reduced-op build
+      - name: Install Python deps
         # reduce_op_kernels.py needs the flatbuffers package (same version as the ORT Dockerfile)
         run: pip install flatbuffers==2.0
 
@@ -67,7 +68,8 @@ jobs:
           restore-keys: |
             ccache-ort-${{ inputs.onnxruntime_version }}-
 
-      - name: Set up vcpkg (pinned by ORT, shared across ABIs)
+      - name: Set up vcpkg
+        # vcpkg tag pinned by ORT's build.py (env.VCPKG_TAG); one shared install for all ABIs
         run: |
           git clone --depth 1 --branch "$VCPKG_TAG" --single-branch https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
           "$HOME/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
@@ -87,21 +89,23 @@ jobs:
           restore-keys: |
             vcpkg-ort-${{ inputs.onnxruntime_version }}-
 
-      - name: Clone ONNX Runtime source (shallow, tag pinned)
+      - name: Clone ONNX Runtime source
+        # shallow clone of the pinned tag v<version>, with submodules
         run: |
           git clone --depth 1 --branch "v$ORT_VERSION" --recurse-submodules --shallow-submodules https://github.com/microsoft/onnxruntime.git onnxruntime
           echo "ORT commit: $(git -C onnxruntime rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
         env:
           ORT_VERSION: ${{ inputs.onnxruntime_version }}
 
-      # Pin CMake to the version used by the official ORT Docker image (3.31.5).
-      # ORT 1.26's CMake files are not validated against CMake 4.x.
-      - name: Set up CMake 3.31.5
+      - name: Set up CMake
+        # Pin CMake to the version used by the official ORT Docker image (3.31.5).
+        # ORT 1.26's CMake files are not validated against CMake 4.x.
         uses: jwlawson/actions-setup-cmake@0d6a7d60b009d01c9e7523be22153ff8f19460d3 # v2.2.0
         with:
           cmake-version: '3.31.5'
 
-      - name: Build AAR (build_aar_package.py, reduced ops)
+      - name: Build AAR
+        # build_aar_package.py with --include_ops_by_config (reduced ops) and Release config
         run: |
           # vcpkg requires the binary cache dir to already exist
           mkdir -p "$HOME/vcpkg-bincache"
@@ -116,32 +120,35 @@ jobs:
         env:
           NDK_VERSION: ${{ env.NDK_VERSION }}
 
-      - name: Save ccache on failure
+      - name: Save ccache
         if: always() && steps.cache-ccache-restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ccache
           key: ${{ steps.cache-ccache-restore.outputs.cache-primary-key }}
 
-      - name: Save vcpkg binary cache on failure
+      - name: Save vcpkg binary cache
         if: always() && steps.cache-vcpkg-restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/vcpkg-bincache
           key: ${{ steps.cache-vcpkg-restore.outputs.cache-primary-key }}
 
-      - name: Package Maven repo (zip keeps the com/ top-level; GitHub strips it from raw dir uploads)
+      - name: Package Maven repo
+        # zip keeps the com/ top-level; GitHub strips it from raw directory uploads
         run: |
           cd ort-build/aar_out/Release
           python -m zipfile -c maven_repo.zip com
 
-      - name: Upload Maven repo (archive:false - direct file, no wrapping zip)
+      - name: Upload Maven repo
+        # archive: false = direct file upload, the download is the zip itself (no wrapping layer)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           path: ort-build/aar_out/Release/maven_repo.zip
           archive: false
 
-      - name: Create GitHub Release (history tag + stable tag)
+      - name: Create GitHub Release
+        # Two channels: dated history tag (one per build date) + version tag (overwrite, consumer contract)
         if: ${{ inputs.release }}
         run: |
           set -e
@@ -159,7 +166,7 @@ jobs:
           - EPs: CPU (XNNPACK), NNAPI
           - minSdk 24 / targetSdk 34, LTO, shared lib
           EOF
-          # history snapshot (append-only per build date)
+          # history snapshot (dated tag)
           HIST_TAG="$ORT_VERSION-$(date +%Y%m%d)"
           gh release delete "$HIST_TAG" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$HIST_TAG" \

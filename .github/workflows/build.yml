@@ -18,7 +18,7 @@ permissions:
   contents: write   # gh release create/upload
 
 env:
-  # OCR pipeline uses only image processing; dnn (and its deps geometry/flann) removed,
+  # OCR pipeline uses only image processing; dnn and its deps (geometry/flann) are not built,
   # inference runs on the custom ONNX Runtime AAR instead
   OPENCV_MODULES: core,imgproc,imgcodecs,videoio,java
 
@@ -29,15 +29,17 @@ jobs:
       - name: Checkout this repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up JDK 17
+      - name: Set up JDK
+        # JDK 17 (temurin) for the Android Gradle plugin
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Python 3.12
+      - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
+          # Python 3.12 for build_sdk.py / build_java_shared_aar.py
           python-version: '3.12'
 
       - name: Set up Android SDK components
@@ -67,7 +69,8 @@ jobs:
           restore-keys: |
             ccache-${{ inputs.opencv_version }}-
 
-      - name: Clone OpenCV source (shallow, tag pinned)
+      - name: Clone OpenCV source
+        # shallow clone of the pinned tag v<version>
         run: |
           git clone --depth 1 --branch "$OPENCV_VERSION" https://github.com/opencv/opencv opencv
           # fetch the tag itself so git describe reports "5.0.0" instead of a bare commit
@@ -76,7 +79,8 @@ jobs:
         env:
           OPENCV_VERSION: ${{ inputs.opencv_version }}
 
-      - name: Build native SDK (build_sdk.py)
+      - name: Build native SDK
+        # build_sdk.py with configs/opencv.config.py and env.OPENCV_MODULES
         run: |
           # work_dir creates o4a/ (build) and OpenCV-android-sdk/ (result) under it
           python opencv/platforms/android/build_sdk.py build opencv \
@@ -86,7 +90,8 @@ jobs:
             --ndk_path "$ANDROID_NDK" \
             --no_samples_build
 
-      - name: Package AAR and Maven repo (build_java_shared_aar.py)
+      - name: Package AAR and Maven repo
+        # build_java_shared_aar.py: produces the AAR and the maven repo under build/outputs/
         run: |
           cd build
           # absolute path required: the script copies libs from the SDK and
@@ -95,24 +100,28 @@ jobs:
             --ndk_location "$ANDROID_NDK" \
             --java_version 17
 
-      - name: Package Maven repo (zip root is org/ so it merges into maven-local/)
+      - name: Zip Maven repo
+        # zip root is org/ (no extra maven_repo/ layer) so it merges with ORT's com/ in maven-local/
         run: |
           cd build/outputs/maven_repo
           python -m zipfile -c ../maven_repo.zip org
 
-      - name: Upload Maven repo (archive:false - direct file, no wrapping zip)
+      - name: Upload Maven repo
+        # archive: false = direct file upload, the download is the zip itself (no wrapping layer)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           path: build/outputs/maven_repo.zip
           archive: false
 
-      - name: Upload AAR (archive:false - direct file)
+      - name: Upload AAR
+        # archive: false = direct file upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           path: build/outputs/opencv_java_shared_${{ inputs.opencv_version }}.aar
           archive: false
 
-      - name: Create GitHub Release (history tag + stable tag)
+      - name: Create GitHub Release
+        # Two channels: dated history tag (one per build date) + version tag (overwrite, consumer contract)
         if: ${{ inputs.release }}
         run: |
           set -e
@@ -129,7 +138,7 @@ jobs:
           - ABIs: armeabi-v7a, arm64-v8a, x86, x86_64
           - Shared C++ libraries (c++_shared STL).
           EOF
-          # history snapshot (append-only per build date)
+          # history snapshot (dated tag)
           HIST_TAG="$OPENCV_VERSION-$(date +%Y%m%d)"
           gh release delete "$HIST_TAG" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$HIST_TAG" \
