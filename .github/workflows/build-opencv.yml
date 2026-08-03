@@ -148,7 +148,7 @@ jobs:
           - Shared C++ libraries (c++_shared STL).
           EOF
           # history snapshot (dated tag)
-          HIST_TAG="$OPENCV_VERSION-$(date +%Y%m%d)"
+          HIST_TAG="opencv-$OPENCV_VERSION-$(date +%Y%m%d)"
           gh release delete "$HIST_TAG" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$HIST_TAG" \
             --target "$GITHUB_SHA" \
@@ -156,8 +156,8 @@ jobs:
             --notes-file release_notes.md \
             maven_repo.zip
           # stable GAV channel (overwrite)
-          gh release delete "$OPENCV_VERSION" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$OPENCV_VERSION" \
+          gh release delete "opencv-$OPENCV_VERSION" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "opencv-$OPENCV_VERSION" \
             --target "$GITHUB_SHA" \
             --title "OpenCV $OPENCV_VERSION custom build" \
             --notes-file release_notes.md \

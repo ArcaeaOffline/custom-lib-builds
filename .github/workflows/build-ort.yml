@@ -167,7 +167,7 @@ jobs:
           - minSdk 24 / targetSdk 34, LTO, shared lib
           EOF
           # history snapshot (dated tag)
-          HIST_TAG="$ORT_VERSION-$(date +%Y%m%d)"
+          HIST_TAG="onnxruntime-$ORT_VERSION-$(date +%Y%m%d)"
           gh release delete "$HIST_TAG" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$HIST_TAG" \
             --target "$GITHUB_SHA" \
@@ -175,8 +175,8 @@ jobs:
             --notes-file release_notes.md \
             maven_repo.zip
           # stable GAV channel (overwrite)
-          gh release delete "$ORT_VERSION" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$ORT_VERSION" \
+          gh release delete "onnxruntime-$ORT_VERSION" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "onnxruntime-$ORT_VERSION" \
             --target "$GITHUB_SHA" \
             --title "ONNX Runtime $ORT_VERSION custom build" \
             --notes-file release_notes.md \
