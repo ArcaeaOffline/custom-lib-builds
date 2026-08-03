@@ -130,29 +130,45 @@ jobs:
           path: ~/vcpkg-bincache
           key: ${{ steps.cache-vcpkg-restore.outputs.cache-primary-key }}
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: onnxruntime-${{ inputs.onnxruntime_version }}
-          path: |
-            ort-build/aar_out/Release/com
-
-      - name: Create GitHub Release
-        if: ${{ inputs.release }}
+      - name: Package Maven repo (zip keeps the com/ top-level; GitHub strips it from raw dir uploads)
         run: |
-          AAR=$(find ort-build/aar_out/Release -name "onnxruntime-android-*.aar" | head -1)
           cd ort-build/aar_out/Release
           python -m zipfile -c maven_repo.zip com
-          # re-publish over an existing release of the same ORT version
-          gh release delete "$ORT_VERSION" --yes --cleanup-tag 2>/dev/null || true
+
+      - name: Upload Maven repo (archive:false - direct file, no wrapping zip)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: ort-build/aar_out/Release/maven_repo.zip
+          archive: false
+
+      - name: Create GitHub Release (history tag + stable tag)
+        if: ${{ inputs.release }}
+        run: |
+          set -e
+          cd ort-build/aar_out/Release
+          AAR=$(find . -name "onnxruntime-android-*.aar" | head -1)
+          SHA=$(sha256sum "$AAR" | cut -d' ' -f1)
+          COMMIT=$(git rev-parse HEAD)
           cat > release_notes.md <<EOF
           Custom ONNX Runtime $ORT_VERSION Android AAR (reduced ops build).
 
-          Ops included: only those used by the ArcaeaOffline OCR model (see configs/ort/ops.config)
-          ABIs: armeabi-v7a, arm64-v8a, x86, x86_64
-          EPs: CPU (XNNPACK), NNAPI
-          minSdk 24 / targetSdk 34, LTO, shared lib
+          - Build commit: $COMMIT
+          - AAR sha256: $SHA
+          - Ops included: reduced set for the OCR model (see configs/ort/ops.config at the commit above)
+          - ABIs: armeabi-v7a, arm64-v8a, x86, x86_64
+          - EPs: CPU (XNNPACK), NNAPI
+          - minSdk 24 / targetSdk 34, LTO, shared lib
           EOF
+          # history snapshot (append-only per build date)
+          HIST_TAG="$ORT_VERSION-$(date +%Y%m%d)"
+          gh release delete "$HIST_TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$HIST_TAG" \
+            --target "$GITHUB_SHA" \
+            --title "ONNX Runtime $ORT_VERSION custom build ($(date +%Y-%m-%d))" \
+            --notes-file release_notes.md \
+            maven_repo.zip
+          # stable GAV channel (overwrite)
+          gh release delete "$ORT_VERSION" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$ORT_VERSION" \
             --target "$GITHUB_SHA" \
             --title "ONNX Runtime $ORT_VERSION custom build" \

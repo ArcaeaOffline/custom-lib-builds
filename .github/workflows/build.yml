@@ -95,32 +95,54 @@ jobs:
             --ndk_location "$ANDROID_NDK" \
             --java_version 17
 
-      - name: Upload artifacts
+      - name: Package Maven repo (zip root is org/ so it merges into maven-local/)
+        run: |
+          cd build/outputs/maven_repo
+          python -m zipfile -c ../maven_repo.zip org
+
+      - name: Upload Maven repo (archive:false - direct file, no wrapping zip)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: opencv-${{ inputs.opencv_version }}
-          path: |
-            build/outputs/opencv_java_shared_*.aar
-            build/outputs/maven_repo
+          path: build/outputs/maven_repo.zip
+          archive: false
 
-      - name: Create GitHub Release
+      - name: Upload AAR (archive:false - direct file)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: build/outputs/opencv_java_shared_${{ inputs.opencv_version }}.aar
+          archive: false
+
+      - name: Create GitHub Release (history tag + stable tag)
         if: ${{ inputs.release }}
         run: |
+          set -e
           cd build/outputs
-          python -m zipfile -c maven_repo.zip maven_repo
-          # re-publish over an existing release of the same OpenCV version
-          gh release delete "$OPENCV_VERSION" --yes --cleanup-tag 2>/dev/null || true
+          AAR=$(find . -name "opencv_java_shared_*.aar" | head -1)
+          SHA=$(sha256sum "$AAR" | cut -d' ' -f1)
+          COMMIT=$(git rev-parse HEAD)
           cat > release_notes.md <<EOF
           Custom OpenCV $OPENCV_VERSION Android AAR.
 
-          Modules: $OPENCV_MODULES
-          ABIs: armeabi-v7a, arm64-v8a, x86, x86_64
-          Shared C++ libraries (c++_shared STL).
+          - Build commit: $COMMIT
+          - AAR sha256: $SHA
+          - Modules: $OPENCV_MODULES
+          - ABIs: armeabi-v7a, arm64-v8a, x86, x86_64
+          - Shared C++ libraries (c++_shared STL).
           EOF
+          # history snapshot (append-only per build date)
+          HIST_TAG="$OPENCV_VERSION-$(date +%Y%m%d)"
+          gh release delete "$HIST_TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$HIST_TAG" \
+            --target "$GITHUB_SHA" \
+            --title "OpenCV $OPENCV_VERSION custom build ($(date +%Y-%m-%d))" \
+            --notes-file release_notes.md \
+            maven_repo.zip
+          # stable GAV channel (overwrite)
+          gh release delete "$OPENCV_VERSION" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$OPENCV_VERSION" \
             --target "$GITHUB_SHA" \
             --title "OpenCV $OPENCV_VERSION custom build" \
             --notes-file release_notes.md \
-            opencv_java_shared_*.aar maven_repo.zip
+            "$AAR" maven_repo.zip
         env:
           OPENCV_VERSION: ${{ inputs.opencv_version }}
