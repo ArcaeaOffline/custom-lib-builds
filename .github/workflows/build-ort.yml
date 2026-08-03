@@ -183,3 +183,5 @@ jobs:
             "$AAR" maven_repo.zip
         env:
           ORT_VERSION: ${{ inputs.onnxruntime_version }}
+          # gh does not read GITHUB_TOKEN automatically; it must be passed explicitly
+          GH_TOKEN: ${{ github.token }}

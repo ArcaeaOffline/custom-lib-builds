@@ -164,3 +164,5 @@ jobs:
             "$AAR" maven_repo.zip
         env:
           OPENCV_VERSION: ${{ inputs.opencv_version }}
+          # gh does not read GITHUB_TOKEN automatically; it must be passed explicitly
+          GH_TOKEN: ${{ github.token }}
