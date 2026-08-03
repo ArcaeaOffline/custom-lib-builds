@@ -45,6 +45,7 @@ jobs:
       - name: Set up Android SDK components
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
         with:
+          # NDK r27 series; verified working with the OpenCV 5.0 Android build
           packages: 'platforms;android-34 build-tools;34.0.0 ndk;27.3.13750724'
 
       - name: Prepare environment
@@ -52,8 +53,9 @@ jobs:
           # build_sdk.py requires ANDROID_SDK / ANDROID_NDK env vars
           echo "ANDROID_SDK=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_NDK=$ANDROID_HOME/ndk/27.3.13750724" >> "$GITHUB_ENV"
-          # AGP 8.6 predates CMake 4.x; remove it so AGP falls back to CMake 3.31.x
-          rm -rf "$ANDROID_HOME/cmake/4.1.2"
+          # AGP 8.6 predates CMake 4.x; remove the SDK copy so AGP falls back to
+          # the pinned PATH cmake installed by the Set up CMake step
+          rm -rf "$ANDROID_HOME/cmake"
 
       - name: Install and configure ccache
         run: |
@@ -78,6 +80,13 @@ jobs:
           echo "OpenCV commit: $(git -C opencv rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
         env:
           OPENCV_VERSION: ${{ inputs.opencv_version }}
+
+      - name: Set up CMake
+        # Pin CMake to 3.31.5. build_sdk.py takes cmake from PATH; AGP 8.6 falls
+        # back to PATH cmake when the Android SDK has none (see Prepare environment).
+        uses: jwlawson/actions-setup-cmake@0d6a7d60b009d01c9e7523be22153ff8f19460d3 # v2.2.0
+        with:
+          cmake-version: '3.31.5'
 
       - name: Build native SDK
         # build_sdk.py with configs/opencv.config.py and env.OPENCV_MODULES
