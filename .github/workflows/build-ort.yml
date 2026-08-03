@@ -80,7 +80,12 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/vcpkg-bincache
-          key: vcpkg-ort-${{ inputs.onnxruntime_version }}-${{ env.VCPKG_TAG }}
+          # fingerprint must cover everything that changes the vcpkg ABI hash
+          # (cmake version, NDK, configs, workflow) or the cache is never refreshed
+          # (exact key hit -> save step skipped -> stale cache restored forever)
+          key: vcpkg-ort-${{ inputs.onnxruntime_version }}-${{ env.VCPKG_TAG }}-${{ hashFiles('configs/ort/*', '.github/workflows/build-ort.yml') }}
+          restore-keys: |
+            vcpkg-ort-${{ inputs.onnxruntime_version }}-
 
       - name: Clone ONNX Runtime source (shallow, tag pinned)
         run: |
