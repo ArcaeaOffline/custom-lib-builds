@@ -21,6 +21,8 @@ env:
   # OCR pipeline uses only image processing; dnn and its deps (geometry/flann) are not built,
   # inference runs on the custom ONNX Runtime AAR instead
   OPENCV_MODULES: core,imgproc,imgcodecs,videoio,java
+  CMAKE_VERSION: 3.31.5        # PATH cmake for build_sdk.py; AGP falls back to it when the SDK has none
+  NDK_VERSION: 27.3.13750724   # NDK r27 series; verified working with the OpenCV 5.0 Android build
 
 jobs:
   build:
@@ -45,14 +47,13 @@ jobs:
       - name: Set up Android SDK components
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
         with:
-          # NDK r27 series; verified working with the OpenCV 5.0 Android build
-          packages: 'platforms;android-34 build-tools;34.0.0 ndk;27.3.13750724'
+          packages: 'platforms;android-34 build-tools;34.0.0 ndk;${{ env.NDK_VERSION }}'
 
       - name: Prepare environment
         run: |
           # build_sdk.py requires ANDROID_SDK / ANDROID_NDK env vars
           echo "ANDROID_SDK=$ANDROID_HOME" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK=$ANDROID_HOME/ndk/27.3.13750724" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> "$GITHUB_ENV"
           # AGP 8.6 predates CMake 4.x; remove the SDK copy so AGP falls back to
           # the pinned PATH cmake installed by the Set up CMake step
           rm -rf "$ANDROID_HOME/cmake"
@@ -63,11 +64,50 @@ jobs:
           echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
           ccache --max-size=5G
 
+      - name: Compute cache fingerprint
+        # Cache keys must cover everything that changes the compiled output:
+        # opencv version, cmake, NDK, module list and the ABI config. Comment
+        # lines are filtered out so doc-only edits do not invalidate caches.
+        id: cache-fp
+        run: |
+          {
+            echo "opencv=$OPENCV_VERSION"
+            echo "cmake=$CMAKE_VERSION"
+            echo "ndk=$NDK_VERSION"
+            echo "modules=$OPENCV_MODULES"
+            grep -vE '^\s*#' configs/opencv.config.py
+          } > /tmp/ccache-factors.txt
+          CCACHE_HASH=$(sha256sum /tmp/ccache-factors.txt | cut -d' ' -f1)
+          echo "ccache_hash=$CCACHE_HASH" >> "$GITHUB_OUTPUT"
+
+          # factor inputs in the step log for debugging
+          echo "--- ccache factors ---"
+          cat /tmp/ccache-factors.txt
+
+          # job summary: visible at the top of the run page
+          {
+            echo "### Cache fingerprints"
+            echo ""
+            echo "ccache: \`ccache-$OPENCV_VERSION-$CCACHE_HASH\`"
+            echo ""
+            echo "<details><summary>ccache factors</summary>"
+            echo ""
+            echo '```'
+            cat /tmp/ccache-factors.txt
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          OPENCV_VERSION: ${{ inputs.opencv_version }}
+          CMAKE_VERSION: ${{ env.CMAKE_VERSION }}
+          NDK_VERSION: ${{ env.NDK_VERSION }}
+          OPENCV_MODULES: ${{ env.OPENCV_MODULES }}
+
       - name: Restore ccache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ccache
-          key: ccache-${{ inputs.opencv_version }}-${{ hashFiles('configs/*.py', '.github/workflows/build-opencv.yml') }}
+          key: ccache-${{ inputs.opencv_version }}-${{ steps.cache-fp.outputs.ccache_hash }}
           restore-keys: |
             ccache-${{ inputs.opencv_version }}-
 
@@ -82,11 +122,11 @@ jobs:
           OPENCV_VERSION: ${{ inputs.opencv_version }}
 
       - name: Set up CMake
-        # Pin CMake to 3.31.5. build_sdk.py takes cmake from PATH; AGP 8.6 falls
-        # back to PATH cmake when the Android SDK has none (see Prepare environment).
+        # Pin CMake version: build_sdk.py takes cmake from PATH;
+        # AGP 8.6 falls back to PATH cmake when the Android SDK has none (see Prepare environment).
         uses: jwlawson/actions-setup-cmake@0d6a7d60b009d01c9e7523be22153ff8f19460d3 # v2.2.0
         with:
-          cmake-version: '3.31.5'
+          cmake-version: '${{ env.CMAKE_VERSION }}'
 
       - name: Build native SDK
         # build_sdk.py with configs/opencv.config.py and env.OPENCV_MODULES

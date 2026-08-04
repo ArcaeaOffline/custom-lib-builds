@@ -21,6 +21,7 @@ permissions:
 
 env:
   VCPKG_TAG: 2025.08.27        # vcpkg checkout pinned by onnxruntime 1.26.0 build.py
+  CMAKE_VERSION: 3.31.5        # same as the official ORT Android build image (v1.26.0 Dockerfile)
   NDK_VERSION: 28.0.13004108   # NDK used by the official ORT Android build image (v1.26.0 Dockerfile)
 
 jobs:
@@ -59,12 +60,70 @@ jobs:
           echo "CCACHE_DIR=$HOME/.cache/ccache" >> "$GITHUB_ENV"
           ccache --max-size=5G
 
+      - name: Compute cache fingerprint
+        # Cache keys must cover everything that changes the cache content:
+        # the vcpkg ABI hash (ort version, vcpkg tag, cmake, NDK, build settings)
+        # and compilation inputs (ops config, NDK, build settings). Comment lines
+        # are filtered out so doc-only edits do not invalidate caches.
+        id: cache-fp
+        run: |
+          {
+            echo "ort=$ORT_VERSION"
+            echo "vcpkg=$VCPKG_TAG"
+            echo "cmake=$CMAKE_VERSION"
+            echo "ndk=$NDK_VERSION"
+            grep -v '^#' configs/ort/aar-build-settings.json
+          } > /tmp/vcpkg-factors.txt
+          {
+            echo "ort=$ORT_VERSION"
+            echo "ndk=$NDK_VERSION"
+            grep -v '^#' configs/ort/ops.config
+            grep -v '^#' configs/ort/aar-build-settings.json
+          } > /tmp/ccache-factors.txt
+          VCPKG_HASH=$(sha256sum /tmp/vcpkg-factors.txt | cut -d' ' -f1)
+          CCACHE_HASH=$(sha256sum /tmp/ccache-factors.txt | cut -d' ' -f1)
+          echo "vcpkg_hash=$VCPKG_HASH" >> "$GITHUB_OUTPUT"
+          echo "ccache_hash=$CCACHE_HASH" >> "$GITHUB_OUTPUT"
+
+          # factor inputs in the step log for debugging
+          echo "--- vcpkg factors ---"
+          cat /tmp/vcpkg-factors.txt
+          echo "--- ccache factors ---"
+          cat /tmp/ccache-factors.txt
+
+          # job summary: visible at the top of the run page
+          {
+            echo "### Cache fingerprints"
+            echo ""
+            echo "vcpkg : \`vcpkg-ort-$ORT_VERSION-$VCPKG_HASH\`"
+            echo "ccache: \`ccache-ort-$ORT_VERSION-$CCACHE_HASH\`"
+            echo ""
+            echo "<details><summary>vcpkg factors</summary>"
+            echo ""
+            echo '```'
+            cat /tmp/vcpkg-factors.txt
+            echo '```'
+            echo "</details>"
+            echo ""
+            echo "<details><summary>ccache factors</summary>"
+            echo ""
+            echo '```'
+            cat /tmp/ccache-factors.txt
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          ORT_VERSION: ${{ inputs.onnxruntime_version }}
+          VCPKG_TAG: ${{ env.VCPKG_TAG }}
+          CMAKE_VERSION: ${{ env.CMAKE_VERSION }}
+          NDK_VERSION: ${{ env.NDK_VERSION }}
+
       - name: Restore ccache
         id: cache-ccache-restore
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ccache
-          key: ccache-ort-${{ inputs.onnxruntime_version }}-${{ hashFiles('configs/ort/*', '.github/workflows/build-ort.yml') }}
+          key: ccache-ort-${{ inputs.onnxruntime_version }}-${{ steps.cache-fp.outputs.ccache_hash }}
           restore-keys: |
             ccache-ort-${{ inputs.onnxruntime_version }}-
 
@@ -82,10 +141,9 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/vcpkg-bincache
-          # fingerprint must cover everything that changes the vcpkg ABI hash
-          # (cmake version, NDK, configs, workflow) or the cache is never refreshed
-          # (exact key hit -> save step skipped -> stale cache restored forever)
-          key: vcpkg-ort-${{ inputs.onnxruntime_version }}-${{ env.VCPKG_TAG }}-${{ hashFiles('configs/ort/*', '.github/workflows/build-ort.yml') }}
+          # fingerprint covers every factor that changes the vcpkg ABI hash,
+          # so a stale key cannot be hit forever (exact key hit skips the save)
+          key: vcpkg-ort-${{ inputs.onnxruntime_version }}-${{ steps.cache-fp.outputs.vcpkg_hash }}
           restore-keys: |
             vcpkg-ort-${{ inputs.onnxruntime_version }}-
 
@@ -98,11 +156,11 @@ jobs:
           ORT_VERSION: ${{ inputs.onnxruntime_version }}
 
       - name: Set up CMake
-        # Pin CMake to the version used by the official ORT Docker image (3.31.5).
+        # Pin CMake to the version used by the official ORT Docker image.
         # ORT 1.26's CMake files are not validated against CMake 4.x.
         uses: jwlawson/actions-setup-cmake@0d6a7d60b009d01c9e7523be22153ff8f19460d3 # v2.2.0
         with:
-          cmake-version: '3.31.5'
+          cmake-version: '${{ env.CMAKE_VERSION }}'
 
       - name: Build AAR
         # build_aar_package.py with --include_ops_by_config (reduced ops) and Release config
