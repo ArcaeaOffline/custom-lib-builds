@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       opencv_version:
-        description: 'OpenCV git tag to build (e.g. 5.0.0)'
+        description: 'OpenCV git tag to build (e.g. 5.1.0)'
         required: false
-        default: '5.0.0'
+        default: '5.1.0'
       release:
         description: 'Create a GitHub Release (tag name = opencv_version)'
         required: false
